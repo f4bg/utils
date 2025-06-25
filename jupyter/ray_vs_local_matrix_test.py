@@ -14,7 +14,6 @@ ray.shutdown()
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}")
 
-# ---------- Función pesada de multiplicación ----------
 def local_matrix_multiply(task_id: int, size: int = 14000, iterations: int = 30):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     log(f"(Local) Tarea {task_id} - Ejecutando en {device}...")
@@ -40,12 +39,10 @@ def local_matrix_multiply(task_id: int, size: int = 14000, iterations: int = 30)
     log(f"(Local) Tarea {task_id} - Tiempo: {duration:.4f}s - Suma resultado: {result.sum().item():.2f}")
     return duration
 
-# ---------- Ray ----------
 @ray.remote(num_gpus=1)
 def ray_matrix_multiply(task_id: int, size: int = 14000, iterations: int = 30):
     return local_matrix_multiply(task_id, size, iterations)
 
-# ---------- Pruebas ----------
 def run_local_tasks(num_tasks=2, size=14000, iterations=30):
     log("=== EJECUCIÓN LOCAL ===")
     times = []
@@ -57,7 +54,7 @@ def run_local_tasks(num_tasks=2, size=14000, iterations=30):
 
 def run_ray_tasks(num_tasks=2, size=14000, iterations=30):
     log("=== EJECUCIÓN CON RAY ===")
-    ray.init(address=RAY_ADDRESS)  # Indicar head del cluster de ray
+    ray.init(address=RAY_ADDRESS)
     futures = [ray_matrix_multiply.remote(i, size, iterations) for i in range(num_tasks)]
     results = ray.get(futures)
     avg = sum(results) / len(results)
@@ -74,7 +71,28 @@ def print_comparison_table(local_times, ray_times):
     print("-" * 32)
     print(f"{'Promedio':<6} | {sum(local_times)/len(local_times):10.4f} | {sum(ray_times)/len(ray_times):10.4f}\n")
 
-# ---------- Main ----------
+def print_statistics(local_times, ray_times):
+    local_avg = sum(local_times) / len(local_times)
+    ray_avg = sum(ray_times) / len(ray_times)
+    local_total = sum(local_times)
+    ray_total = sum(ray_times)
+
+    diff = ray_avg - local_avg
+    perc_change = (diff / local_avg) * 100
+    speed_ratio = local_avg / ray_avg if ray_avg > 0 else float('inf')
+
+    print("=== Estadísticas Comparativas ===")
+    print(f"Tiempo promedio local   : {local_avg:.4f} s")
+    print(f"Tiempo promedio Ray     : {ray_avg:.4f} s")
+    print(f"Diferencia promedio     : {diff:+.4f} s")
+    if perc_change >= 0:
+        print(f"Ray es {perc_change:.2f}% más lento que local.")
+    else:
+        print(f"Ray es {abs(perc_change):.2f}% más rápido que local.")
+    print(f"Velocidad relativa      : {speed_ratio:.2f}x (local/Ray)")
+    print(f"Tiempo total local      : {local_total:.4f} s")
+    print(f"Tiempo total Ray        : {ray_total:.4f} s\n")
+
 if __name__ == "__main__":
     num_tasks = NUM_TASKS
     matrix_size = MATRIX_SIZE
@@ -84,3 +102,4 @@ if __name__ == "__main__":
     ray_times, ray_avg = run_ray_tasks(num_tasks, matrix_size, iterations)
 
     print_comparison_table(local_times, ray_times)
+    print_statistics(local_times, ray_times)
